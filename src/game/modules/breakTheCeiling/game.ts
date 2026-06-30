@@ -117,10 +117,11 @@ class BreakTheCeiling implements GameInstance {
 
   // ── Difficulty model ──────────────────────────────────────────────────────
   private makeCeiling(height: number): Ceiling {
-    const minGap = this.W * 0.16;
-    const maxGap = this.W * 0.42;
-    // Gap narrows with height; clamps at minGap.
-    const gapW = Math.max(minGap, maxGap - height * 0.18);
+    const minGap = this.W * 0.13;
+    const maxGap = this.W * 0.44;
+    // The target shrinks FASTER the more ceilings you've broken — an accelerating
+    // power curve, so each promotion makes the weak point tighter than the last.
+    const gapW = Math.max(minGap, maxGap - Math.pow(this.broken, 1.7) * (this.W * 0.0016));
     const margin = this.W * 0.06;
     const minX = margin;
     const maxX = this.W - margin - gapW;
@@ -653,32 +654,91 @@ class BreakTheCeiling implements GameInstance {
     const s = this.avatarSize;
     const x = this.avatarX;
     const y = this.avatarY - this.climbAnim * 30;
-    // Aligned glow — the broker is locked onto the gap.
+    const live = !this.over && this.climbAnim === 0;
+
+    g.save();
+    g.translate(x, y);
+    if (live) g.rotate(this.dir * 0.12); // bank toward travel
+
+    // Aligned aura — the rocket is locked onto the gap.
     if (aligned) {
       const pulse = 0.5 + 0.5 * Math.sin(this.t * 11);
-      g.globalAlpha = 0.35 + 0.4 * pulse;
+      g.globalAlpha = 0.3 + 0.4 * pulse;
       g.fillStyle = BRAND.palette.salmon;
       g.beginPath();
-      g.arc(x, y, s * 0.92, 0, Math.PI * 2);
+      g.arc(0, 0, s * 0.95, 0, Math.PI * 2);
       g.fill();
       g.globalAlpha = 1;
     }
-    // Body (rounded square)
-    g.fillStyle = BRAND.palette.mist;
-    roundRect(g, x - s / 2, y - s / 2, s, s, s * 0.22);
-    g.fill();
-    // Accent helmet bar in the current tier colour.
-    g.fillStyle = accent;
-    roundRect(g, x - s / 2, y - s / 2, s, s * 0.28, s * 0.18);
-    g.fill();
-    // Upward aim indicator.
-    g.fillStyle = "rgba(255,120,122,0.9)";
+
+    // Thrust flame (flickering), brighter and longer when locked on.
+    const flick = 0.7 + 0.3 * Math.sin(this.t * 40);
+    const flameLen = s * (aligned ? 1.05 : 0.7) * flick;
+    const fGrad = g.createLinearGradient(0, s * 0.5, 0, s * 0.5 + flameLen);
+    fGrad.addColorStop(0, "rgba(255,201,120,0.95)");
+    fGrad.addColorStop(0.5, "rgba(255,120,122,0.8)");
+    fGrad.addColorStop(1, "rgba(255,120,122,0)");
+    g.fillStyle = fGrad;
     g.beginPath();
-    g.moveTo(x, y - s * 0.78);
-    g.lineTo(x - s * 0.18, y - s * 0.52);
-    g.lineTo(x + s * 0.18, y - s * 0.52);
+    g.moveTo(-s * 0.18, s * 0.5);
+    g.lineTo(s * 0.18, s * 0.5);
+    g.lineTo(0, s * 0.5 + flameLen);
     g.closePath();
     g.fill();
+    g.fillStyle = "rgba(255,241,205,0.9)"; // hot inner flame
+    g.beginPath();
+    g.moveTo(-s * 0.09, s * 0.5);
+    g.lineTo(s * 0.09, s * 0.5);
+    g.lineTo(0, s * 0.5 + flameLen * 0.55);
+    g.closePath();
+    g.fill();
+
+    const bw = s * 0.52;
+    const bh = s * 1.0;
+
+    // Fins (tier-coloured), behind the body.
+    g.fillStyle = accent;
+    g.beginPath();
+    g.moveTo(-bw / 2, bh / 2 - s * 0.2);
+    g.lineTo(-bw / 2 - s * 0.2, bh / 2 + s * 0.08);
+    g.lineTo(-bw / 2, bh / 2);
+    g.closePath();
+    g.fill();
+    g.beginPath();
+    g.moveTo(bw / 2, bh / 2 - s * 0.2);
+    g.lineTo(bw / 2 + s * 0.2, bh / 2 + s * 0.08);
+    g.lineTo(bw / 2, bh / 2);
+    g.closePath();
+    g.fill();
+
+    // Body (rounded capsule).
+    g.fillStyle = BRAND.palette.mist;
+    roundRect(g, -bw / 2, -bh / 2, bw, bh, bw * 0.45);
+    g.fill();
+    // Soft side shading for volume.
+    g.fillStyle = "rgba(31,52,63,0.14)";
+    roundRect(g, bw * 0.12, -bh / 2, bw * 0.38, bh, bw * 0.3);
+    g.fill();
+
+    // Nose cone (tier-coloured).
+    g.fillStyle = accent;
+    g.beginPath();
+    g.moveTo(-bw / 2, -bh / 2 + bw * 0.18);
+    g.quadraticCurveTo(0, -bh / 2 - s * 0.32, bw / 2, -bh / 2 + bw * 0.18);
+    g.closePath();
+    g.fill();
+
+    // Porthole window.
+    g.fillStyle = BRAND.palette.denim;
+    g.beginPath();
+    g.arc(0, -bh * 0.1, s * 0.14, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "rgba(123,160,178,0.8)";
+    g.beginPath();
+    g.arc(-s * 0.04, -bh * 0.13, s * 0.05, 0, Math.PI * 2);
+    g.fill();
+
+    g.restore();
   }
 
   private drawHud(g: CanvasRenderingContext2D) {
@@ -762,15 +822,80 @@ class BreakTheCeiling implements GameInstance {
     const H = this.H;
     const t = Math.min(1, height / 1600); // altitude 0..1
     const grad = g.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, lerpColor("#16252e", "#1c3f5e", t));
+    grad.addColorStop(0, lerpColor("#0e1a23", "#15324c", t));
+    grad.addColorStop(0.6, lerpColor("#16252e", "#21496a", t));
     grad.addColorStop(1, lerpColor("#1F343F", "#4a7ba0", t));
     g.fillStyle = grad;
     g.fillRect(-20, -20, W + 40, H + 40);
 
+    this.drawStars(g, t);
+    this.drawMoon(g, t);
+    this.drawHorizonGlow(g, t);
     this.drawCity(g, height, 0); // far district
     this.drawCity(g, height, 1); // near district
     this.drawBurj(g, height); // the landmark, rising above the skyline
     this.drawClouds(g, height, t);
+  }
+
+  // Stars fade in as you climb above the city haze; a few twinkle.
+  private drawStars(g: CanvasRenderingContext2D, t: number) {
+    const alpha = Math.max(0, (t - 0.12) * 1.1);
+    if (alpha <= 0.02) return;
+    g.save();
+    g.fillStyle = BRAND.palette.mist;
+    for (let i = 0; i < 44; i++) {
+      const sx = hash(i * 1.7) * this.W;
+      const sy = hash(i * 3.1) * this.H * 0.55;
+      const tw = 0.4 + 0.6 * Math.abs(Math.sin(this.t * 1.2 + i));
+      g.globalAlpha = Math.min(0.85, alpha) * tw;
+      const r = 0.7 + hash(i * 5) * 1.6;
+      g.fillRect(sx, sy, r, r);
+    }
+    g.restore();
+  }
+
+  // A soft crescent moon high in the sky, brighter the higher you climb.
+  private drawMoon(g: CanvasRenderingContext2D, t: number) {
+    const alpha = 0.32 + 0.45 * t;
+    const mx = this.W * 0.8;
+    const my = this.H * 0.14;
+    const r = this.W * 0.075;
+    g.save();
+    // Halo
+    const halo = g.createRadialGradient(mx, my, r * 0.4, mx, my, r * 2.6);
+    halo.addColorStop(0, `rgba(237,232,228,${0.25 * alpha})`);
+    halo.addColorStop(1, "rgba(237,232,228,0)");
+    g.fillStyle = halo;
+    g.beginPath();
+    g.arc(mx, my, r * 2.6, 0, Math.PI * 2);
+    g.fill();
+    // Disc
+    g.globalAlpha = alpha;
+    g.fillStyle = "#e7e0d6";
+    g.beginPath();
+    g.arc(mx, my, r, 0, Math.PI * 2);
+    g.fill();
+    // Carve a crescent with a sky-coloured offset circle.
+    g.globalAlpha = alpha;
+    g.fillStyle = lerpColor("#0e1a23", "#15324c", t);
+    g.beginPath();
+    g.arc(mx - r * 0.5, my - r * 0.22, r * 0.96, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+
+  // Warm dusk glow on the horizon behind the city — fades as you rise.
+  private drawHorizonGlow(g: CanvasRenderingContext2D, t: number) {
+    const a = (1 - t) * 0.5;
+    if (a <= 0.02) return;
+    const y0 = this.H * 0.4;
+    const y1 = this.H * 0.82;
+    const grad = g.createLinearGradient(0, y0, 0, y1);
+    grad.addColorStop(0, "rgba(217,150,120,0)");
+    grad.addColorStop(0.5, `rgba(217,150,120,${a * 0.55})`);
+    grad.addColorStop(1, "rgba(255,120,122,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, y0, this.W, y1 - y0);
   }
 
   // The Burj Khalifa on the horizon — a distant, towering landmark that sinks
@@ -817,6 +942,17 @@ class BreakTheCeiling implements GameInstance {
       yb = yt;
     }
 
+    // A lit core running up the tower (seeded by row so it doesn't flicker).
+    g.fillStyle = "#f0d9b8";
+    let r2 = 0;
+    for (let wy = ground - H * 0.05; wy > yb + H * 0.03; wy -= H * 0.032, r2++) {
+      if (hash(r2 * 13 + 1) > 0.42) {
+        g.globalAlpha = alpha * 0.6;
+        g.fillRect(cx - 1, wy, 2, 2.4);
+      }
+    }
+    g.globalAlpha = alpha;
+
     // The spire.
     const spireH = totalH * 0.1;
     g.strokeStyle = "#2c5274";
@@ -840,26 +976,66 @@ class BreakTheCeiling implements GameInstance {
   private drawCity(g: CanvasRenderingContext2D, height: number, depth: number) {
     const W = this.W;
     const H = this.H;
-    const parallax = depth === 0 ? 2.4 : 4.6;
-    const colW = depth === 0 ? W * 0.13 : W * 0.19;
-    const maxH = depth === 0 ? H * 0.26 : H * 0.34;
-    const tint = depth === 0 ? "#21455e" : "#142028";
+    const parallax = depth === 0 ? 2.2 : 4.4;
+    const tint = depth === 0 ? "#234760" : "#13212b";
+    const edge = depth === 0 ? "#2d5775" : "#1c303d";
     const fade = Math.min(1, height / 1300);
-    const alpha = (depth === 0 ? 0.55 : 0.8) * (1 - 0.9 * fade);
+    const alpha = (depth === 0 ? 0.6 : 0.92) * (1 - 0.9 * fade);
     if (alpha <= 0.02) return;
 
-    const span = H * 0.5;
-    const baseY = H * 0.5 + ((height * parallax) % span);
+    const span = H * 0.55;
+    const baseY = H * 0.52 + ((height * parallax) % span);
+    const unit = depth === 0 ? W * 0.16 : W * 0.2;
+    const maxBH = depth === 0 ? H * 0.2 : H * 0.32;
     g.save();
     g.globalAlpha = alpha;
-    g.fillStyle = tint;
-    for (let copy = 0; copy < 2; copy++) {
+    // Draw the back (upper) copy first so the front copy's windows aren't
+    // overpainted by the next copy's full-height fill.
+    for (let copy = 1; copy >= 0; copy--) {
       const by = baseY - copy * span;
-      let col = 0;
-      for (let x = -colW; x < W + colW; x += colW, col++) {
-        const hh = maxH * (0.35 + hash(col + depth * 53) * 0.65);
-        const top = by - hh;
-        g.fillRect(x + colW * 0.08, top, colW * 0.84, H - top); // fill to bottom
+      let x = -unit;
+      let i = 0;
+      while (x < W + unit) {
+        // Deterministic, varied building width + height (no per-frame jitter).
+        const bw = unit * (0.55 + hash(i * 1.3 + depth * 9) * 0.8);
+        const bh = maxBH * (0.4 + hash(i * 2.7 + depth * 5) * 0.9);
+        const topY = by - bh;
+        g.fillStyle = tint;
+        g.fillRect(x, topY, bw * 0.94, H - topY);
+        g.fillStyle = edge; // lit roof edge
+        g.fillRect(x, topY, bw * 0.94, 2);
+        if (hash(i * 5 + depth * 3) > 0.72) {
+          // rooftop antenna
+          g.fillStyle = edge;
+          g.fillRect(x + bw * 0.45, topY - bh * 0.14, 2, bh * 0.14);
+        }
+
+        // Window lights — near layer only, within the tower region.
+        if (depth === 1) {
+          const rowH = H * 0.038;
+          const winW = bw * 0.09;
+          const winH = rowH * 0.32;
+          const cols = 3;
+          const colGap = (bw * 0.66) / cols;
+          const startX = x + bw * 0.16;
+          const bottom = Math.min(by, H);
+          let row = 0;
+          for (let wy = topY + rowH * 0.7; wy < bottom - rowH * 0.3; wy += rowH, row++) {
+            for (let c = 0; c < cols; c++) {
+              const seed = i * 131 + row * 17 + c * 7;
+              const r = hash(seed);
+              if (r > 0.55) {
+                const tw = r > 0.9 ? 0.4 + 0.6 * Math.abs(Math.sin(this.t * 1.5 + seed)) : 1;
+                g.globalAlpha = Math.min(0.9, alpha * 1.05) * tw;
+                g.fillStyle = "#ffd79e"; // warm window light
+                g.fillRect(startX + c * colGap, wy, winW, winH);
+              }
+            }
+          }
+          g.globalAlpha = alpha;
+        }
+        x += bw;
+        i++;
       }
     }
     g.restore();
