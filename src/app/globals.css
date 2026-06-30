@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --slate: #1f343f;
+  --denim: #2c537a;
+  --powder: #7ba0b2;
+  --sand: #d9b9a0;
+  --mist: #ede8e4;
+  --salmon: #ff787a;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--mist);
+  color: var(--slate);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: "Ivy Epic", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* Lock the viewport for a mobile-first, app-like feel. */
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
+}
+
+h1,
+h2,
+h3,
+.font-head {
+  font-family: "Ivy Mode", Georgia, serif;
+}
+
+/* CTA buttons: salmon, diamond-shaped (rotated square) per brand rules. */
+.cta-diamond {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--salmon);
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.9rem 2.2rem;
+  border: none;
+  cursor: pointer;
+  clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.cta-diamond:hover {
+  filter: brightness(1.05);
+}
+.cta-diamond:active {
+  transform: scale(0.97);
+}
+.cta-diamond:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Hide scrollbars inside the leaderboard list on mobile. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-rise {
+  animation: rise 0.32s ease both;
+}
