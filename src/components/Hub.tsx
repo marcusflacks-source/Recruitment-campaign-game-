@@ -7,6 +7,7 @@ import LeadForm from "@/components/LeadForm";
 import ShareRow from "@/components/ShareRow";
 import { GAMES, DEFAULT_GAME_ID } from "@/game/registry";
 import { tierForHeight } from "@/lib/tiers";
+import { gameOverQuip } from "@/lib/voice";
 import { emit } from "@/lib/analytics";
 import { BRAND } from "@/lib/brand";
 import type { SegmentKey } from "@/lib/segments";
@@ -301,6 +302,10 @@ function ResultScreen({
           {result.tierTitle}
         </span>
         <p className="mt-1 text-xs text-denim">{tier.earnings}</p>
+
+        <p className="mx-auto mt-3 max-w-xs text-sm italic text-slate/70">
+          {gameOverQuip(result.height, result.tierKey)}
+        </p>
 
         {saved ? (
           <div className="mt-5">

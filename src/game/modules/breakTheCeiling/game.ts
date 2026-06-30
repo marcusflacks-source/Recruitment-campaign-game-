@@ -1,6 +1,7 @@
 import type { GameContext, GameInstance, GameModule } from "@/game/engine/types";
 import { CAREER_TIERS, tierForHeight } from "@/lib/tiers";
 import { BRAND } from "@/lib/brand";
+import { tierUpQuip, milestoneCrossed } from "@/lib/voice";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // "Break the ceiling" — endless vertical climber.
@@ -65,6 +66,16 @@ class BreakTheCeiling implements GameInstance {
   private flash = 0; // smash flash 0..1
   private climbAnim = 0; // 0..1 transition after a break
   private targetBeaten = false;
+
+  // Witty in-run callouts (tier-ups + career milestones).
+  private toast: { text: string; sub?: string; life: number } | null = null;
+
+  // Deterministic cloud seeds for the rising-skyline backdrop.
+  private readonly cloudSeeds = [
+    { x: 0.2, y: 0.1, s: 0.22, par: 2.2 },
+    { x: 0.66, y: 0.42, s: 0.3, par: 1.6 },
+    { x: 0.44, y: 0.76, s: 0.18, par: 2.9 },
+  ];
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -161,7 +172,19 @@ class BreakTheCeiling implements GameInstance {
     if (inGap) {
       // Break through: rise a level.
       this.broken += 1;
+      const prevHeight = this.height;
       this.height = this.broken * HEIGHT_PER_CEILING;
+
+      // Voice: a tier-up trumps a milestone; otherwise surface the milestone.
+      const prevTierKey = tierForHeight(prevHeight).key;
+      const newTier = tierForHeight(this.height);
+      if (newTier.key !== prevTierKey) {
+        this.toast = { text: newTier.title, sub: tierUpQuip(newTier.key), life: 2.3 };
+      } else {
+        const ms = milestoneCrossed(prevHeight, this.height);
+        if (ms) this.toast = { text: ms.label, life: 1.8 };
+      }
+
       this.spawnDebris(true);
       this.climbAnim = 1; // triggers the rise transition
       this.ctx.onScore(this.height);
@@ -257,6 +280,10 @@ class BreakTheCeiling implements GameInstance {
 
     this.flash = Math.max(0, this.flash - dt * 4);
     this.shake = Math.max(0, this.shake - dt * 40);
+    if (this.toast) {
+      this.toast.life -= dt;
+      if (this.toast.life <= 0) this.toast = null;
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -272,13 +299,10 @@ class BreakTheCeiling implements GameInstance {
       );
     }
 
-    // Background: slate gradient, brighter the higher you are.
+    // Background: the Dubai skyline you climb — sky brightens, the city sinks
+    // below you and clouds take over as your career rises.
     const tier = tierForHeight(this.height);
-    const grad = g.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, "#16252e");
-    grad.addColorStop(1, BRAND.palette.slate);
-    g.fillStyle = grad;
-    g.fillRect(-20, -20, W + 40, H + 40);
+    this.drawSky(g, this.height);
 
     // Faint guide rails.
     g.strokeStyle = "rgba(123,160,178,0.15)";
@@ -424,7 +448,112 @@ class BreakTheCeiling implements GameInstance {
         14,
       );
     }
+
+    // Witty tier-up / milestone toast, centred just above the next ceiling.
+    if (this.toast) {
+      const a = Math.min(1, this.toast.life * 1.6);
+      g.globalAlpha = a;
+      g.textAlign = "center";
+      g.fillStyle = BRAND.palette.mist;
+      g.font = `600 ${Math.round(W * 0.052)}px "Ivy Mode", Georgia, serif`;
+      g.fillText(this.toast.text, W / 2, this.H * 0.165);
+      if (this.toast.sub) {
+        g.fillStyle = BRAND.palette.sand;
+        g.font = `500 ${Math.round(W * 0.036)}px "Ivy Epic", "Segoe UI", sans-serif`;
+        g.fillText(this.toast.sub, W / 2, this.H * 0.165 + W * 0.062);
+      }
+      g.globalAlpha = 1;
+    }
   }
+
+  // ── Rising skyline backdrop ─────────────────────────────────────────────────
+  private drawSky(g: CanvasRenderingContext2D, height: number) {
+    const W = this.W;
+    const H = this.H;
+    const t = Math.min(1, height / 1600); // altitude 0..1
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, lerpColor("#16252e", "#1c3f5e", t));
+    grad.addColorStop(1, lerpColor("#1F343F", "#4a7ba0", t));
+    g.fillStyle = grad;
+    g.fillRect(-20, -20, W + 40, H + 40);
+
+    this.drawCity(g, height, 0); // far district
+    this.drawCity(g, height, 1); // near district
+    this.drawClouds(g, height, t);
+  }
+
+  // A parallax band of tower silhouettes that sinks as you climb, then fades
+  // away once you're above the city. `depth` 0 = far/slow, 1 = near/fast.
+  private drawCity(g: CanvasRenderingContext2D, height: number, depth: number) {
+    const W = this.W;
+    const H = this.H;
+    const parallax = depth === 0 ? 2.4 : 4.6;
+    const colW = depth === 0 ? W * 0.13 : W * 0.19;
+    const maxH = depth === 0 ? H * 0.26 : H * 0.34;
+    const tint = depth === 0 ? "#21455e" : "#142028";
+    const fade = Math.min(1, height / 1300);
+    const alpha = (depth === 0 ? 0.55 : 0.8) * (1 - 0.9 * fade);
+    if (alpha <= 0.02) return;
+
+    const span = H * 0.5;
+    const baseY = H * 0.5 + ((height * parallax) % span);
+    g.save();
+    g.globalAlpha = alpha;
+    g.fillStyle = tint;
+    for (let copy = 0; copy < 2; copy++) {
+      const by = baseY - copy * span;
+      let col = 0;
+      for (let x = -colW; x < W + colW; x += colW, col++) {
+        const hh = maxH * (0.35 + hash(col + depth * 53) * 0.65);
+        const top = by - hh;
+        g.fillRect(x + colW * 0.08, top, colW * 0.84, H - top); // fill to bottom
+      }
+    }
+    g.restore();
+  }
+
+  private drawClouds(g: CanvasRenderingContext2D, height: number, t: number) {
+    const alpha = Math.min(0.55, t * 0.7); // only appear up high
+    if (alpha < 0.02) return;
+    const span = this.H * 0.7;
+    g.save();
+    g.globalAlpha = alpha;
+    g.fillStyle = BRAND.palette.mist;
+    for (const c of this.cloudSeeds) {
+      const y = (c.y * span + height * c.par) % span;
+      this.cloudBlob(g, c.x * this.W, y, c.s * this.W);
+      this.cloudBlob(g, ((c.x + 0.5) % 1) * this.W, (y + span * 0.5) % span, c.s * this.W * 0.8);
+    }
+    g.restore();
+  }
+
+  private cloudBlob(g: CanvasRenderingContext2D, x: number, y: number, r: number) {
+    g.beginPath();
+    g.arc(x, y, r * 0.6, 0, Math.PI * 2);
+    g.arc(x + r * 0.5, y + r * 0.1, r * 0.45, 0, Math.PI * 2);
+    g.arc(x - r * 0.5, y + r * 0.12, r * 0.4, 0, Math.PI * 2);
+    g.arc(x + r * 0.1, y - r * 0.2, r * 0.4, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+
+// Deterministic 0..1 hash for procedural building heights (no per-frame jitter).
+function hash(i: number): number {
+  const s = Math.sin(i * 127.1) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+function hexToRgb(h: string): [number, number, number] {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// Interpolate between two hex colours; returns an rgb() string.
+function lerpColor(a: string, b: string, t: number): string {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  const c = A.map((v, i) => Math.round(v + (B[i] - v) * t));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
 
 function roundRect(
